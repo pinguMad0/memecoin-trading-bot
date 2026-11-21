@@ -1,0 +1,46 @@
+# Credentials and local tools
+.env
+.env.*
+!.env.example
+.claude/
+.venv/
+.ruff_cache/
+
+# Dependencies and build output
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Local research, history, and independent experiments
+/research/
+/PROJECT_STATE.md
+/LEGACY_PROJECT_STATE.md
+/DASHBOARD_BLUEPRINT.md
+/past context.txt
+/nul
+
+# Runtime data and private configuration
+/data/
+/wallets.json
+/bot_state.json
+*.db
+*.log
+*.bak
+*.backup
+*.pre-*
+
+# JSON is local by default. Public manifests and schemas are exceptions.
+*.json
+*.jsonl
+!package.json
+!package-lock.json
+!tsconfig.json
+!dashboard/package.json
+!dashboard/package-lock.json
+!src/executor/pump_amm_idl.json
+!strategy_config.example.json
+
+# Python and platform artifacts
+__pycache__/
+*.pyc
+.DS_Store

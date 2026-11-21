@@ -1,0 +1,15 @@
+{
+  "name": "memecoin-trading-dashboard",
+  "version": "1.0.0",
+  "description": "Local read-only dashboard for the memecoin trading bot",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
+}

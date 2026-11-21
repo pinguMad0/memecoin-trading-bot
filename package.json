@@ -1,0 +1,29 @@
+{
+  "name": "memecoin-trading-bot",
+  "version": "1.0.0",
+  "description": "Solana memecoin signal and execution bot with a local dashboard",
+  "main": "dist/executor_entry.js",
+  "scripts": {
+    "start": "ts-node src/executor_entry.ts",
+    "start:curve": "ts-node src/curve/curve_executor_entry.ts",
+    "start:dashboard": "node dashboard/server.js",
+    "start:recorder": "uv run --no-project python scripts/signal_recorder_v2.py",
+    "start:shadow": "uv run --no-project python scripts/shadow_trade_loop.py",
+    "start:pipeline": "uv run --no-project python scripts/pipeline_loop.py",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@solana/web3.js": "^1.98.4",
+    "base64-js": "^1.5.1",
+    "bs58": "^6.0.0",
+    "dotenv": "^17.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^6.0.3"
+  }
+}

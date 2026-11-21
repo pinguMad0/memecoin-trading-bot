@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>mcoin — Memecoin Signal Bot</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1"></script>
+    <style>
+        body { background-color: #020617; color: #f8fafc; font-family: sans-serif; }
+        .card { background-color: #0f172a; border: 1px solid #1e293b; border-radius: 0.75rem; padding: 1.5rem; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        html { scrollbar-width: thin; scrollbar-color: #334155 #0f172a; }
+        .tab-btn.active { background-color: #1d4ed8; color: white; }
+        .tab-btn:not(.active) { background-color: #1e293b; color: #94a3b8; }
+        .tab-btn:not(.active):hover { background-color: #334155; }
+        .status-fresh { color: #4ade80; }
+        .status-stale { color: #fbbf24; }
+        .status-dead { color: #f87171; }
+        .reason-sl { color: #f87171; }
+        .reason-trail { color: #fbbf24; }
+        .reason-timeout { color: #94a3b8; }
+        aside.collapsed { width: 56px !important; }
+        aside.collapsed .tab-label, aside.collapsed #sidebar-label { display: none; }
+        .mono { font-family: 'SF Mono', Menlo, Consolas, monospace; }
+        .badge { font-size: 0.7rem; border-radius: 9999px; padding: 0.1rem 0.5rem; }
+        .badge-win { background: #14532d; color: #86efac; }
+        .badge-loss { background: #7f1d1d; color: #fca5a5; }
+        .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem 1.5rem; }
+        .detail-item .k { font-size: 0.65rem; text-transform: uppercase; color: #64748b; }
+        .detail-item .v { font-size: 0.8rem; color: #e2e8f0; }
+        tr.expanded-detail { background: #0b1120; }
+        tr.expanded-detail:hover { background: #0b1120 !important; }
+    </style>
+</head>
+<body class="p-6">
+    <div class="flex max-w-7xl mx-auto gap-0">
+        <aside id="sidebar" class="flex-shrink-0 transition-all duration-200 ease-in-out border-r border-slate-800 pr-3 mr-3" style="width: 200px;">
+            <div class="sticky top-6 flex flex-col gap-2">
+                <div class="flex items-center justify-between mb-1">
+                    <span id="sidebar-label" class="text-xs uppercase text-slate-500 font-bold px-2">Views</span>
+                    <button id="sidebar-toggle" class="text-slate-500 hover:text-slate-200 transition-colors p-1" title="Toggle sidebar">
+                        <span id="sidebar-chevron">‹</span>
+                    </button>
+                </div>
+                <button data-tab="overview" class="tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium flex items-center gap-3">
+                    <span>📊</span><span class="tab-label">Overview</span>
+                </button>
+                <button data-tab="trades" class="tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium flex items-center gap-3">
+                    <span>📈</span><span class="tab-label">Shadow Trades</span>
+                </button>
+                <button data-tab="research" class="tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium flex items-center gap-3">
+                    <span>🔬</span><span class="tab-label">Research</span>
+                </button>
+                <button data-tab="batches" class="tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium flex items-center gap-3">
+                    <span>🧪</span><span class="tab-label">Batches</span>
+                </button>
+                <button data-tab="pipeline" class="tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium flex items-center gap-3">
+                    <span>🩺</span><span class="tab-label">Pipeline</span>
+                </button>
+                <button data-tab="curve" class="tab-btn w-full text-left px-3 py-2 rounded-md text-sm font-medium flex items-center gap-3">
+                    <span>🌊</span><span class="tab-label">Curve Venue</span>
+                </button>
+                <div class="mt-6 px-2 text-xs text-slate-500 leading-relaxed">
+                    <div>Batch: <span id="side-batch" class="text-slate-300">-</span></div>
+                    <div>Config: <span id="side-hash" class="mono text-slate-300">-</span></div>
+                </div>
+            </div>
+        </aside>
+        <main class="flex-1 min-w-0">
+            <h1 class="text-2xl font-bold mb-1">mcoin — Memecoin Signal Bot</h1>
+            <p class="text-slate-400 text-sm mb-6">Signal-first day-trading research pipeline · shadow mode, zero capital</p>
+
+            <!-- OVERVIEW -->
+            <section id="tab-overview" class="tab-content">
+                <div class="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
+                    <div class="card !p-4"><div class="text-xs text-slate-500 uppercase">Watching</div><div class="text-2xl font-bold text-slate-200" id="ov-watch">-</div></div>
+                    <div class="card !p-4"><div class="text-xs text-slate-500 uppercase">Open</div><div class="text-2xl font-bold text-blue-400" id="ov-open">-</div></div>
+                    <div class="card !p-4"><div class="text-xs text-slate-500 uppercase">Closed today</div><div class="text-2xl font-bold text-slate-200" id="ov-today">-</div></div>
+                    <div class="card !p-4"><div class="text-xs text-slate-500 uppercase">Batch mean</div><div class="text-2xl font-bold text-green-400 mono" id="ov-mean">-</div></div>
+                    <div class="card !p-4"><div class="text-xs text-slate-500 uppercase">Batch WR</div><div class="text-2xl font-bold text-slate-200" id="ov-wr">-</div></div>
+                    <div class="card !p-4" id="wallet-tile"><div class="text-xs text-slate-500 uppercase">Real wallet</div><div class="text-2xl font-bold mono" id="ov-wallet">-</div><div class="text-[10px] text-slate-600" id="ov-wallet-note">burner, on-chain</div></div>
+                </div>
+                <div class="card mb-6 overflow-hidden flex flex-col" style="max-height: 400px;">
+                    <h2 class="text-lg font-semibold mb-3">LIVE positions <span class="text-xs text-red-400 ml-2">REAL WALLET — must match Axiom/Phantom</span></h2>
+                    <div class="overflow-auto flex-1">
+                        <table class="w-full text-sm">
+                            <thead class="text-xs text-slate-400 sticky top-0 bg-slate-900">
+                                <tr class="border-b border-slate-700">
+                                    <th class="text-left py-2 px-2">Mint</th><th class="text-right py-2 px-2">Entry</th>
+                                    <th class="text-right py-2 px-2">Peak</th><th class="text-right py-2 px-2">Held</th>
+                                    <th class="text-right py-2 px-2">Batch</th><th class="text-left py-2 px-2">Flags</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ov-live-positions-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card mb-6 overflow-hidden flex flex-col" style="max-height: 320px;">
+                    <h2 class="text-lg font-semibold mb-3">Shadow paper positions <span class="text-xs text-slate-500 ml-2">simulation book — every trigger, not real holdings</span></h2>
+                    <div class="overflow-auto flex-1">
+                        <table class="w-full text-sm">
+                            <thead class="text-xs text-slate-400 sticky top-0 bg-slate-900">
+                                <tr class="border-b border-slate-700">
+                                    <th class="text-left py-2 px-2">Mint</th><th class="text-right py-2 px-2">Entry</th>
+                                    <th class="text-right py-2 px-2">Last</th><th class="text-right py-2 px-2">Peak</th>
+                                    <th class="text-right py-2 px-2">Held</th><th class="text-right py-2 px-2">Liq</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ov-positions-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card mb-6" id="divergence-card" style="display:none;">
+                    <h2 class="text-lg font-semibold mb-1">Sim vs fill-conditional <span class="text-xs text-slate-500 ml-2">shadow (model +3%) vs executor (real Jupiter quotes) — current batch</span></h2>
+                    <p class="text-xs text-slate-600 mb-3">Compare modeled shadow entries with quote-based executor entries for the active batch.</p>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="divergence-body"></div>
+                </div>
+                <div class="card">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-lg font-semibold">Batch performance <span class="text-xs text-slate-500 ml-2">simulated wallet · resets each batch</span></h2>
+                        <div class="flex gap-2 items-center text-xs">
+                            <button id="perf-x-trades" class="px-2 py-1 rounded tab-btn active">trades</button>
+                            <button id="perf-x-time" class="px-2 py-1 rounded tab-btn">time</button>
+                            <label class="text-slate-500 ml-1">batch</label>
+                            <select id="perf-batch-select" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200"></select>
+                            <span id="perf-pnl" class="mono font-bold"></span>
+                        </div>
+                    </div>
+                    <div style="height: 320px;"><canvas id="perf-chart"></canvas></div>
+                    <p class="text-xs text-slate-600 mt-2">The simulated wallet uses the starting balance and stake configured on the server. Green = SOL balance, blue = running win rate, bars = per-trade return.</p>
+                </div>
+            </section>
+
+            <!-- SHADOW TRADES -->
+            <section id="tab-trades" class="tab-content hidden">
+                <div class="card">
+                    <div class="flex items-center justify-between mb-3">
+                        <h2 class="text-lg font-semibold">Shadow trade log <span class="text-xs text-slate-500 ml-2">click a row for full metadata</span></h2>
+                        <div class="flex gap-2 text-xs">
+                            <select id="trades-filter-batch" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200"></select>
+                            <select id="trades-filter-reason" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200">
+                                <option value="">all exits</option>
+                                <option value="sl">sl (stop-out)</option><option value="trail">trail</option>
+                                <option value="timeout">timeout</option>
+                            </select>
+                            <select id="trades-filter-outcome" class="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200">
+                                <option value="">all outcomes</option><option value="win">wins</option><option value="loss">losses</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="text-xs text-slate-500 mb-2" id="trades-count">-</div>
+                    <div class="overflow-auto" style="max-height: 70vh;">
+                        <table class="w-full text-sm">
+                            <thead class="text-xs text-slate-400 sticky top-0 bg-slate-900">
+                                <tr class="border-b border-slate-700">
+                                    <th class="text-left py-2 px-2">Time</th><th class="text-left py-2 px-2">Batch</th>
+                                    <th class="text-left py-2 px-2">Mint</th><th class="text-right py-2 px-2">Entry</th>
+                                    <th class="text-right py-2 px-2">Exit</th><th class="text-right py-2 px-2">Held</th>
+                                    <th class="text-right py-2 px-2">Return</th><th class="text-left py-2 px-2">Exit type</th>
+                                </tr>
+                            </thead>
+                            <tbody id="trades-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RESEARCH -->
+            <section id="tab-research" class="tab-content hidden">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+                    <div class="card">
+                        <h2 class="text-lg font-semibold mb-3">Momentum trigger (backtest)</h2>
+                        <div id="research-trigger" class="text-sm text-slate-400">loading…</div>
+                        <h3 class="text-sm font-medium mt-4 mb-2 text-slate-300">EV convergence</h3>
+                        <div id="research-convergence" class="flex gap-3 flex-wrap text-xs"></div>
+                    </div>
+                    <div class="card">
+                        <h2 class="text-lg font-semibold mb-3">Outcome distribution <span class="text-xs text-slate-500">per 100 triggered trades</span></h2>
+                        <div style="height: 300px;"><canvas id="hist-chart"></canvas></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- BATCHES -->
+            <section id="tab-batches" class="tab-content hidden">
+                <div id="batches-cards" class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6"></div>
+                <div class="card">
+                    <h2 class="text-lg font-semibold mb-3">Config change log</h2>
+                    <div class="overflow-auto" style="max-height: 50vh;">
+                        <table class="w-full text-sm">
+                            <thead class="text-xs text-slate-400 sticky top-0 bg-slate-900">
+                                <tr class="border-b border-slate-700">
+                                    <th class="text-left py-2 px-2">Ts</th><th class="text-left py-2 px-2">Batch</th>
+                                    <th class="text-left py-2 px-2">Hash</th><th class="text-left py-2 px-2">Hypothesis</th>
+                                    <th class="text-left py-2 px-2">Expected</th><th class="text-left py-2 px-2">Actual</th>
+                                    <th class="text-left py-2 px-2">Verdict</th>
+                                </tr>
+                            </thead>
+                            <tbody id="changelog-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PIPELINE -->
+            <section id="tab-pipeline" class="tab-content hidden">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6" id="pipeline-health"></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="card"><h2 class="text-lg font-semibold mb-3">Recorder</h2><div id="pipeline-recorder" class="text-sm text-slate-300"></div></div>
+                    <div class="card"><h2 class="text-lg font-semibold mb-3">Supervisor & scorer</h2><div id="pipeline-supervisor" class="text-sm text-slate-300"></div></div>
+                </div>
+            </section>
+
+            <!-- CURVE PAPER STREAM -->
+            <section id="tab-curve" class="tab-content hidden">
+                <div id="curve-cards" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"></div>
+                <div class="card mb-6">
+                    <h2 class="text-lg font-semibold mb-3">Open positions <span class="text-xs text-slate-500 ml-2">paper - executable quotes only</span></h2>
+                    <div class="overflow-auto" style="max-height: 30vh;">
+                        <table class="w-full text-sm">
+                            <thead class="text-xs text-slate-400 sticky top-0 bg-slate-900">
+                                <tr class="border-b border-slate-700">
+                                    <th class="text-left py-2 px-2">Mint</th><th class="text-right py-2 px-2">Age</th>
+                                    <th class="text-right py-2 px-2">Size SOL</th><th class="text-right py-2 px-2">Entry eff px</th>
+                                    <th class="text-right py-2 px-2">Peak px</th><th class="text-right py-2 px-2">Moonbag</th>
+                                </tr>
+                            </thead>
+                            <tbody id="curve-open-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="card mb-6">
+                    <h2 class="text-lg font-semibold mb-3">Closed positions <span class="text-xs text-slate-500 ml-2">test rows excluded from stats</span></h2>
+                    <div class="overflow-auto" style="max-height: 40vh;">
+                        <table class="w-full text-sm">
+                            <thead class="text-xs text-slate-400 sticky top-0 bg-slate-900">
+                                <tr class="border-b border-slate-700">
+                                    <th class="text-left py-2 px-2">Mint</th><th class="text-left py-2 px-2">Exit</th>
+                                    <th class="text-right py-2 px-2">PnL SOL</th><th class="text-right py-2 px-2">Size</th>
+                                    <th class="text-left py-2 px-2">Closed at</th>
+                                </tr>
+                            </thead>
+                            <tbody id="curve-closed-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="card"><h2 class="text-lg font-semibold mb-3">Entry funnel</h2><div id="curve-funnel" class="text-sm text-slate-300"></div></div>
+                    <div class="card"><h2 class="text-lg font-semibold mb-3">Recent events</h2><div id="curve-recent" class="text-xs text-slate-300 overflow-auto" style="max-height: 30vh;"></div></div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script>
+    const state = {
+        currentTab: 'overview',
+        etags: {},
+        perfBatch: null,
+        perfXMode: 'trades',
+        expandedTrades: new Set(),
+        filterTrades: { batch: '', reason: '', outcome: '' },
+        batchOptions: [],
+        perfChart: null, histChart: null,
+    };
+
+    function showTab(name) {
+        state.currentTab = name;
+        document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+        document.querySelectorAll('.tab-content').forEach((c) => c.classList.toggle('hidden', c.id !== `tab-${name}`));
+        poll();
+    }
+    document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+    document.getElementById('sidebar-toggle').addEventListener('click', () => {
+        const sb = document.getElementById('sidebar');
+        document.getElementById('sidebar-chevron').textContent = sb.classList.toggle('collapsed') ? '›' : '‹';
+    });
+
+    async function fetchEtag(url) {
+        const headers = {};
+        if (state.etags[url]) headers['If-None-Match'] = state.etags[url];
+        const resp = await fetch(url, { headers });
+        if (resp.status === 304) return null;
+        const etag = resp.headers.get('ETag');
+        if (etag) state.etags[url] = etag;
+        return resp.json();
+    }
+
+    function fmtPct(x, digits = 1) { return (x >= 0 ? '+' : '') + (100 * x).toFixed(digits) + '%'; }
+    function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString() : '-'; }
+    function fmtDT(iso) {
+        if (!iso) return '-';
+        const d = new Date(iso);
+        const MM = String(d.getMonth() + 1).padStart(2, '0'), DD = String(d.getDate()).padStart(2, '0');
+        const HH = String(d.getHours()).padStart(2, '0'), mm = String(d.getMinutes()).padStart(2, '0'), ss = String(d.getSeconds()).padStart(2, '0');
+        return `${MM}/${DD} ${HH}:${mm}:${ss}`;
+    }
+    function fmtPrice(x) {
+        if (x === null || x === undefined) return '-';
+        if (x >= 0.01 || x <= -0.01) return x.toFixed(5);
+        return x.toExponential(2);
+    }
+    function heldStr(s) { if (!s && s !== 0) return '-'; if (s < 90) return s + 's'; return Math.round(s / 60) + 'm'; }
+    function retBadge(r) {
+        const cls = r > 0 ? 'badge-win' : 'badge-loss';
+        return `<span class="badge ${cls} mono">${fmtPct(r)}</span>`;
+    }
+    function kv(k, v) { return `<div class="detail-item"><div class="k">${k}</div><div class="v mono">${v ?? '-'}</div></div>`; }
+    function solscan(mint) { return mint ? `https://solscan.io/token/${mint}` : null; }
+    function pumpfun(mint) { return mint ? `https://pump.fun/coin/${mint}` : null; }
+
+    // ---------- Overview ----------
+    function renderStats(d) {
+        document.getElementById('ov-watch').textContent = d.watching;
+        document.getElementById('ov-open').textContent = d.open;
+        document.getElementById('ov-today').textContent = d.closed_today;
+        const s = d.active_batch_stats;
+        document.getElementById('ov-mean').textContent = s.n ? fmtPct(s.mean_ret) : '-';
+        document.getElementById('ov-wr').textContent = s.n ? (100 * s.win_rate).toFixed(0) + '%' : '-';
+        document.getElementById('side-batch').textContent = d.batch;
+        document.getElementById('side-hash').textContent = d.config_hash || '-';
+    }
+
+    async function renderWallet() {
+        try {
+            const w = await fetchEtag('/api/wallet');
+            if (!w || !w.configured) {
+                document.getElementById('ov-wallet').textContent = 'n/a';
+                return;
+            }
+            const el = document.getElementById('ov-wallet');
+            const tile = document.getElementById('wallet-tile');
+            el.textContent = w.sol.toFixed(4) + ' SOL';
+            el.className = 'text-2xl font-bold mono ' +
+                (w.sol < 0.02 ? 'text-red-400' : w.sol < 0.05 ? 'text-amber-400' : 'text-green-400');
+            tile.style.borderColor = w.sol < 0.02 ? '#f87171' : '';
+        } catch (e) { /* transient */ }
+    }
+
+    function renderLivePositions(d) {
+        const tbody = document.getElementById('ov-live-positions-body');
+        if (!d.positions.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-slate-500 py-6">No live positions (clean book)</td></tr>';
+            return;
+        }
+        tbody.innerHTML = d.positions.map((p) => {
+            const flags = [
+                p.sell_pending ? '<span class="text-amber-400">sell-retrying</span>' : '',
+                p.invalid_reason ? `<span class="text-red-400">${p.invalid_reason}</span>` : '',
+            ].filter(Boolean).join(' ') || '-';
+            return `
+            <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+                <td class="py-1.5 px-2 mono text-xs">${p.mint.slice(0, 10)}…</td>
+                <td class="py-1.5 px-2 text-right mono">${fmtPrice(p.entry)}</td>
+                <td class="py-1.5 px-2 text-right mono">${fmtPrice(p.peak)}</td>
+                <td class="py-1.5 px-2 text-right">${heldStr(p.held_s)}</td>
+                <td class="py-1.5 px-2 text-right">${p.entry_batch ?? '-'}</td>
+                <td class="py-1.5 px-2 text-xs">${flags}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function renderLive(d) {
+        const tbody = document.getElementById('ov-positions-body');
+        if (!d.positions.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-slate-500 py-8">No open shadow positions</td></tr>';
+            return;
+        }
+        tbody.innerHTML = d.positions.map((p) => `
+            <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+                <td class="py-1.5 px-2 mono text-xs">${p.mint.slice(0, 8)}…</td>
+                <td class="py-1.5 px-2 text-right mono">${fmtPrice(p.entry)}</td>
+                <td class="py-1.5 px-2 text-right mono">${fmtPrice(p.last_price)}</td>
+                <td class="py-1.5 px-2 text-right mono">${fmtPrice(p.peak)}</td>
+                <td class="py-1.5 px-2 text-right">${heldStr(p.held_s)}</td>
+                <td class="py-1.5 px-2 text-right mono">$${(p.liq || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+            </tr>`).join('');
+    }
+
+    function populateBatchSelects(batches, activeBatch) {
+        state.batchOptions = batches;
+        for (const sel of ['perf-batch-select', 'trades-filter-batch']) {
+            const el = document.getElementById(sel);
+            const cur = el.value;
+            el.innerHTML = '';
+            if (sel === 'trades-filter-batch') el.innerHTML += '<option value="">all batches</option>';
+            batches.forEach((b) => {
+                const o = document.createElement('option');
+                o.value = b; o.textContent = `batch ${b}` + (b === activeBatch ? ' (active)' : '');
+                el.appendChild(o);
+            });
+            if (cur && batches.includes(cur)) el.value = cur;
+        }
+        if (state.perfBatch === null) {
+            state.perfBatch = activeBatch;
+            document.getElementById('perf-batch-select').value = activeBatch;
+        }
+    }
+
+    let perfDataCache = null;
+    function renderPerfChart(data) {
+        perfDataCache = data;
+        const ctx = document.getElementById('perf-chart');
+        const isTime = state.perfXMode === 'time';
+        const labels = data.points.map((p) => (isTime ? new Date(p.ts) : p.i));
+        const balance = data.points.map((p) => p.balance);
+        const wr = data.points.map((p) => p.wr);
+        const rets = data.points.map((p) => p.ret);
+        const startBal = data.start_balance ?? 0;
+        const last = data.points.length ? data.points[data.points.length - 1].balance : startBal;
+        const solDelta = last - startBal;
+        const pnlPct = startBal ? (solDelta / startBal) * 100 : 0;
+        const el = document.getElementById('perf-pnl');
+        el.textContent = `${solDelta >= 0 ? '+' : ''}${solDelta.toFixed(3)} SOL (${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(1)}%)`;
+        el.className = `mono font-bold ${solDelta >= 0 ? 'text-green-400' : 'text-red-400'}`;
+        if (state.perfChart) state.perfChart.destroy();
+        const xCfg = isTime ? {
+            type: 'timeseries', time: { unit: 'hour', tooltipFormat: 'MM/dd HH:mm', displayFormats: { hour: 'MM/dd HH:mm', day: 'MM/dd' } },
+            ticks: { color: '#64748b', maxTicksLimit: 10, autoSkip: true }, grid: { color: '#1e293b' },
+        } : {
+            ticks: { color: '#64748b', maxTicksLimit: 20 }, grid: { color: '#1e293b' }, title: { display: true, text: 'trade #', color: '#64748b' },
+        };
+        state.perfChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'SOL balance', data: balance, borderColor: '#4ade80',
+                        backgroundColor: 'rgba(74, 222, 128, 0.08)', fill: true, yAxisID: 'y',
+                        tension: 0.25, pointRadius: 0, borderWidth: 2,
+                    },
+                    {
+                        label: 'Win rate %', data: wr, borderColor: '#60a5fa',
+                        yAxisID: 'y1', tension: 0.25, pointRadius: 0, borderWidth: 1.5,
+                    },
+                    {
+                        label: 'Trade return', data: rets.map((r) => (100 * r).toFixed(1)),
+                        yAxisID: 'y1', type: 'bar', backgroundColor: rets.map((r) =>
+                            r > 0 ? 'rgba(74,222,128,0.35)' : 'rgba(248,113,113,0.35)'),
+                        barPercentage: 0.6, categoryPercentage: 0.7,
+                    },
+                ],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { labels: { color: '#94a3b8', boxWidth: 12 } } },
+                scales: {
+                    x: xCfg,
+                    y: {
+                        ticks: { color: '#64748b', callback: (v) => v.toFixed(2) + ' SOL' }, grid: { color: '#1e293b' },
+                        title: { display: true, text: 'wallet balance (SOL)', color: '#64748b' },
+                    },
+                    y1: { position: 'right', ticks: { color: '#64748b', callback: (v) => v + '%' }, grid: { drawOnChartArea: false } },
+                },
+            },
+        });
+    }
+
+    // ---------- Trades (expandable rows) ----------
+    function renderTrades(d) {
+        document.getElementById('trades-count').textContent = `${d.count} closed trades`;
+        const tbody = document.getElementById('trades-body');
+        if (!d.rows.length) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-slate-500 py-8">No trades match the filters</td></tr>';
+            return;
+        }
+        tbody.innerHTML = d.rows.map((r) => {
+            const open = state.expandedTrades.has(r.ts + r.mint);
+            const compact = `
+            <tr class="border-b border-slate-800 hover:bg-slate-800/50 cursor-pointer" data-key="${r.ts}${r.mint}">
+                <td class="py-1.5 px-2 text-xs mono">${fmtDT(r.ts)}</td>
+                <td class="py-1.5 px-2 text-xs">${r.batch}</td>
+                <td class="py-1.5 px-2 mono text-xs">${r.mint.slice(0, 8)}…</td>
+                <td class="py-1.5 px-2 text-right mono text-xs">${fmtPrice(r.entry_modeled)}</td>
+                <td class="py-1.5 px-2 text-right mono text-xs">${fmtPrice(r.exit_price)}</td>
+                <td class="py-1.5 px-2 text-right text-xs">${heldStr(r.held_s)}</td>
+                <td class="py-1.5 px-2 text-right">${retBadge(r.return)}</td>
+                <td class="py-1.5 px-2 text-xs reason-${r.reason}">${r.reason}</td>
+            </tr>`;
+            if (!open) return compact;
+            const links = [
+                solscan(r.mint) ? `<a class="text-blue-400 hover:underline" target="_blank" rel="noopener" href="${solscan(r.mint)}">Solscan</a>` : '',
+                pumpfun(r.mint) ? `<a class="text-blue-400 hover:underline" target="_blank" rel="noopener" href="${pumpfun(r.mint)}">pump.fun</a>` : '',
+            ].filter(Boolean).join(' · ');
+            const detail = `
+            <tr class="expanded-detail border-b border-slate-800">
+                <td colspan="8" class="py-3 px-4">
+                    <div class="detail-grid">
+                        ${kv('trigger price', fmtPrice(r.trigger_price))}
+                        ${kv('mom reference', fmtPrice(r.mom_ref))}
+                        ${kv('launch liquidity', r.liq ? '$' + r.liq.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '-')}
+                        ${kv('peak price', fmtPrice(r.peak_price))}
+                        ${kv('peak multiple', r.peak_multiple ? r.peak_multiple.toFixed(2) + 'x' : '-')}
+                        ${kv('exit price', fmtPrice(r.exit_price))}
+                        ${kv('held', heldStr(r.held_s))}
+                        ${kv('config hash', r.config_hash)}
+                    </div>
+                    <div class="mt-2 text-xs">${links}</div>
+                </td>
+            </tr>`;
+            return compact + detail;
+        }).join('');
+        tbody.querySelectorAll('tr[data-key]').forEach((tr) => {
+            tr.addEventListener('click', () => {
+                const key = tr.dataset.key;
+                if (state.expandedTrades.has(key)) state.expandedTrades.delete(key);
+                else state.expandedTrades.add(key);
+                renderTrades(d);
+            });
+        });
+    }
+
+    // ---------- Research ----------
+    function renderResearch(d) {
+        const t = d.trigger;
+        document.getElementById('research-trigger').innerHTML = t ? `
+            <table class="w-full text-sm">
+                <tr class="border-b border-slate-800"><td class="py-1.5 text-slate-400">Trigger rate</td><td class="py-1.5 text-right mono">${t.fired} / ${t.gated} (${(100 * t.fired / t.gated).toFixed(0)}%)</td></tr>
+                <tr class="border-b border-slate-800"><td class="py-1.5 text-slate-400">P(hit +50% TP first, 15m)</td><td class="py-1.5 text-right mono text-green-400">${t.p_tp}%</td></tr>
+                <tr class="border-b border-slate-800"><td class="py-1.5 text-slate-400">P(stop-out -30%)</td><td class="py-1.5 text-right mono text-red-400">${t.p_sl}%</td></tr>
+                <tr class="border-b border-slate-800"><td class="py-1.5 text-slate-400">P(timeout)</td><td class="py-1.5 text-right mono text-slate-400">${t.p_timeout}%</td></tr>
+                <tr class="border-b border-slate-800"><td class="py-1.5 text-slate-400">EV / trade</td><td class="py-1.5 text-right mono text-amber-400 font-bold">${t.ev > 0 ? '+' : ''}${t.ev}%</td></tr>
+                <tr><td class="py-1.5 text-slate-400">Median 15m return from trigger</td><td class="py-1.5 text-right mono">${t.median_15m > 0 ? '+' : ''}${t.median_15m}%</td></tr>
+            </table>` : 'trigger report not parsed yet';
+        document.getElementById('research-convergence').innerHTML = d.ev_convergence.map((x, i) => {
+            const col = i === d.ev_convergence.length - 1 ? 'text-amber-400' : 'text-slate-400';
+            return `<div class="card !p-2 !px-3"><div class="text-slate-500">n=${x.n}</div><div class="${col} mono font-bold">+${x.ev}%</div><div class="text-slate-600">${x.note}</div></div>`;
+        }).join('');
+        const h = d.histogram;
+        const ctx = document.getElementById('hist-chart');
+        const labels = Object.keys(h.buckets);
+        const vals = Object.values(h.buckets).map((v) => 100 * v / (h.n || 1));
+        const colors = ['#f87171', '#f87171', '#fb923c', '#94a3b8', '#4ade80', '#4ade80', '#22c55e'];
+        if (state.histChart) state.histChart.destroy();
+        state.histChart = new Chart(ctx, {
+            type: 'bar',
+            data: { labels, datasets: [{ data: vals, backgroundColor: colors, borderRadius: 4 }] },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => c.parsed.y.toFixed(1) + '% of trades' } } },
+                scales: {
+                    x: { ticks: { color: '#64748b', font: { size: 9 } }, grid: { display: false } },
+                    y: { ticks: { color: '#64748b', callback: (v) => v + '%' }, grid: { color: '#1e293b' }, max: 45 },
+                },
+            },
+        });
+    }
+
+    // ---------- Batches ----------
+    function renderBatches(d) {
+        document.getElementById('batches-cards').innerHTML = d.batches.slice().reverse().map((b) => {
+            const s = b.stats;
+            const active = b.batch === d.active_batch;
+            const startBal = b.perf ? (b.perf.start_balance ?? 0) : 0;
+            const endBal = b.perf ? b.perf.final_balance : startBal;
+            const solDelta = endBal - startBal;
+            const pnlPct = startBal ? 100 * solDelta / startBal : 0;
+            const verdict = (d.change_log.find((c) => c.batch === b.batch) || {}).verdict || '-';
+            return `
+            <div class="card ${active ? '!border-blue-600' : ''}">
+                <div class="text-xs text-slate-500 mb-2">BATCH ${b.batch} ${active ? '<span class="text-blue-400">· ACTIVE</span>' : ''}</div>
+                <div class="flex items-baseline gap-2">
+                    <span class="text-3xl font-bold mono ${solDelta >= 0 ? 'text-green-400' : 'text-red-400'}">${solDelta >= 0 ? '+' : ''}${solDelta.toFixed(2)} SOL</span>
+                    <span class="text-sm text-slate-500 mono">(${pnlPct >= 0 ? '+' : ''}${pnlPct.toFixed(0)}%)</span>
+                </div>
+                <div class="grid grid-cols-3 gap-1 mt-3">
+                    <div class="text-center"><div class="text-xs text-slate-500">trades</div><div class="text-sm text-slate-300 mono">${s.n}</div></div>
+                    <div class="text-center"><div class="text-xs text-slate-500">WR</div><div class="text-sm text-slate-300 mono">${(100 * s.win_rate).toFixed(0)}%</div></div>
+                    <div class="text-center"><div class="text-xs text-slate-500">mean</div><div class="text-sm text-slate-300 mono">${fmtPct(s.mean_ret)}</div></div>
+                </div>
+                <div class="grid grid-cols-2 gap-1 mt-3 pt-2 border-t border-slate-800">
+                    <div class="text-center"><div class="text-[10px] uppercase text-slate-600">stop-outs</div><div class="text-xs text-slate-500 mono">${(100 * s.stop_rate).toFixed(1)}%</div></div>
+                    <div class="text-center"><div class="text-[10px] uppercase text-slate-600">verdict</div><div class="text-xs ${verdict === 'SUCCESS' ? 'text-green-400' : verdict === 'FAILURE' ? 'text-red-400' : 'text-amber-400'}">${verdict}</div></div>
+                </div>
+            </div>`;
+        }).join('');
+        document.getElementById('changelog-body').innerHTML = d.change_log.slice().reverse().map((c) => `
+            <tr class="border-b border-slate-800 hover:bg-slate-800/50 align-top">
+                <td class="py-2 px-2 text-xs mono">${c.ts ? fmtDT(c.ts) : '-'}</td>
+                <td class="py-2 px-2 text-xs">${c.batch}</td>
+                <td class="py-2 px-2 text-xs mono">${c.config_hash || '-'}</td>
+                <td class="py-2 px-2 text-xs text-slate-300 max-w-xs">${c.hypothesis || '-'}</td>
+                <td class="py-2 px-2 text-xs text-slate-400 max-w-xs">${c.expected_outcome || '-'}</td>
+                <td class="py-2 px-2 text-xs text-slate-400 max-w-xs">${c.actual || '(pending)'}</td>
+                <td class="py-2 px-2 text-xs ${c.verdict === 'SUCCESS' ? 'text-green-400' : c.verdict === 'FAILURE' ? 'text-red-400' : 'text-amber-400'}">${c.verdict || '-'}</td>
+            </tr>`).join('');
+    }
+
+    // ---------- Pipeline ----------
+    function renderCurve(d) {
+        const st = d.stats || {}, fn = d.funnel || {}, fd = d.feed || {};
+        const cards = [
+            { label: 'watchlist', value: fd.watch === undefined ? '-' : fd.watch, color: 'text-slate-200' },
+            { label: 'open positions', value: st.open || 0, color: 'text-slate-200' },
+            { label: 'closed n (excl tests)', value: st.n || 0, color: 'text-slate-200' },
+            { label: 'win rate', value: (st.wr === null || st.wr === undefined) ? '-' : (100 * st.wr).toFixed(1) + '%', color: 'text-slate-200' },
+            { label: 'realized PnL SOL', value: (st.pnl_sol || 0).toFixed(4), color: (st.pnl_sol || 0) >= 0 ? 'text-green-400' : 'text-red-400' },
+            { label: 'entries booked', value: fn.booked || 0, color: 'text-slate-200' },
+            { label: 'feed log age', value: fd.log_age_s === null || fd.log_age_s === undefined ? '-' : Math.round(fd.log_age_s) + 's', color: (fd.log_age_s || 0) > 120 ? 'text-amber-400' : 'text-green-400' },
+            { label: 'shadow open / n', value: (st.shadow_open || 0) + ' / ' + (st.shadow_n || 0), color: 'text-purple-300' },
+            { label: 'shadow PnL SOL', value: (st.shadow_pnl_sol || 0).toFixed(4), color: (st.shadow_pnl_sol || 0) >= 0 ? 'text-purple-300' : 'text-fuchsia-400' },
+            { label: 'shadow win rate', value: (st.shadow_wr === null || st.shadow_wr === undefined) ? '-' : (100 * st.shadow_wr).toFixed(1) + '%', color: 'text-purple-300' },
+        ];
+        document.getElementById('curve-cards').innerHTML = cards.map((c) => `
+            <div class="card p-3">
+                <div class="text-xs text-slate-400">${c.label}</div>
+                <div class="text-xl font-semibold mono ${c.color}">${c.value}</div>
+            </div>`).join('');
+
+        const ob = document.getElementById('curve-open-body');
+        const open = d.open || [];
+        ob.innerHTML = !open.length
+            ? '<tr><td colspan="6" class="text-center text-slate-500 py-6">No open curve positions</td></tr>'
+            : open.map((p) => {
+                const ageS = (Date.now() - p.t_entry_us / 1000) / 1000;
+                return `
+                <tr class="border-b border-slate-800 hover:bg-slate-800/50">
+                    <td class="py-1.5 px-2 mono text-xs">${p.mint.slice(0, 10)}…</td>
+                    <td class="py-1.5 px-2 text-right mono">${heldStr(ageS)}</td>
+                    <td class="py-1.5 px-2 text-right mono">${p.size_sol}</td>
+                    <td class="py-1.5 px-2 text-right mono">${(p.entry_eff_price || 0).toExponential(3)}</td>
+                    <td class="py-1.5 px-2 text-right mono">${(p.peak_price || 0).toExponential(3)}</td>
+                    <td class="py-1.5 px-2 text-right">${p.moonbag_done ? '<span class="text-green-400">done</span>' : '-'}</td>
+                </tr>`;
+            }).join('');
+
+        const cb = document.getElementById('curve-closed-body');
+        const closed = d.closed || [];
+        cb.innerHTML = !closed.length
+            ? '<tr><td colspan="5" class="text-center text-slate-500 py-6">No closed curve positions yet</td></tr>'
+            : closed.map((p) => `
+                <tr class="border-b border-slate-800 hover:bg-slate-800/50${p.test ? ' opacity-50' : ''}">
+                    <td class="py-1.5 px-2 mono text-xs">${p.mint.slice(0, 10)}…${p.test ? ' <span class="text-xs text-slate-500">(test)</span>' : ''}${p.shadow ? ' <span class="text-xs text-purple-400">(shadow)</span>' : ''}</td>
+                    <td class="py-1.5 px-2">${p.exit_reason}</td>
+                    <td class="py-1.5 px-2 text-right mono ${(p.pnl_sol || 0) >= 0 ? 'text-green-400' : 'text-red-400'}">${(p.pnl_sol || 0).toFixed(5)}</td>
+                    <td class="py-1.5 px-2 text-right mono">${p.size_sol}</td>
+                    <td class="py-1.5 px-2 mono text-xs">${p.closed_at || '-'}</td>
+                </tr>`).join('');
+
+        const a = fn.aborts || {};
+        const funnelRows = [
+            ['booked', fn.booked || 0],
+            ['audit fail', a['curve_entry_audit_fail'] || 0],
+            ['no quote', a['curve_entry_no_quote'] || 0],
+            ['price dev', a['curve_entry_price_dev'] || 0],
+            ['build fail', a['curve_entry_build_fail'] || 0],
+            ['sim fail', a['curve_entry_sim_fail'] || 0],
+            ['max positions skip', a['curve_skip_max_positions'] || 0],
+            ['vertical block', a['curve_trigger_blocked_vertical'] || 0],
+        ];
+        document.getElementById('curve-funnel').innerHTML = funnelRows.map((r) =>
+            `<div class="flex justify-between"><span class="text-slate-400">${r[0]}</span><span class="mono">${r[1]}</span></div>`).join('');
+
+        document.getElementById('curve-recent').innerHTML = (d.recent || []).map((e) =>
+            `<div>${e.ts ? e.ts.slice(11, 19) : '-'} <span class="text-slate-500">${e.kind.replace('curve_', '')}</span> ${e.mint || ''}` +
+            `${e.mom !== undefined ? ' mom=' + (100 * e.mom).toFixed(0) + '%' : ''}${e.dev_pct !== undefined ? ' dev=' + Number(e.dev_pct).toFixed(2) + '%' : ''}${e.pnl_sol !== undefined ? ' pnl=' + Number(e.pnl_sol).toFixed(5) : ''}</div>`).join('');
+    }
+
+    function renderPipeline(d) {
+        const healthIcon = { fresh: '🟢', stale: '🟡', dead: '🔴' };
+        document.getElementById('pipeline-health').innerHTML = Object.entries(d.health).map(([name, h]) => `
+            <div class="card !p-4">
+                <div class="text-xs text-slate-500 uppercase">${name}</div>
+                <div class="text-lg font-bold status-${h.status}">${healthIcon[h.status]} ${h.status}</div>
+                <div class="text-xs text-slate-600 mono">last write: ${h.age_s === null ? 'never' : h.age_s + 's ago'}</div>
+            </div>`).join('');
+        const r = d.recorder;
+        document.getElementById('pipeline-recorder').innerHTML = `
+            <div class="grid grid-cols-2 gap-2 mono text-xs text-slate-300">
+                <div>events: <span class="text-slate-100">${(r.events_logged || 0).toLocaleString()}</span></div>
+                <div>pf calls: <span class="text-slate-100">${(r.pf_calls || 0).toLocaleString()}</span></div>
+                <div>gt calls: <span class="text-slate-100">${(r.gt_calls || 0).toLocaleString()}</span></div>
+                <div>rpc calls: <span class="text-slate-100">${(r.rpc_calls || 0).toLocaleString()}</span></div>
+                <div>pf backoff: <span class="${r.pf_backoff_s_left > 0 ? 'text-amber-400' : 'text-green-400'}">${r.pf_backoff_s_left > 0 ? r.pf_backoff_s_left + 's left' : 'clear'}</span></div>
+                <div>curve watch: <span class="text-slate-100">${r.watch}</span></div>
+                <div>enrich queue: <span class="text-slate-100">${r.enrich_queue}</span></div>
+            </div>`;
+        document.getElementById('pipeline-supervisor').innerHTML = `
+            <div class="grid grid-cols-2 gap-2 mono text-xs text-slate-300">
+                <div>last cycle: <span class="text-slate-100">${d.supervisor.last_cycle || 'unknown'}</span></div>
+                <div>reports age: <span class="text-slate-100">${d.supervisor.reports_age_s === null ? 'never' : Math.round(d.supervisor.reports_age_s / 60) + 'm'}</span></div>
+                <div>scored rows: <span class="text-slate-100">${(d.scorer.scored_rows || 0).toLocaleString()}</span></div>
+                <div>zombie blacklist: <span class="text-slate-100">${d.scorer.zombie_blacklist}</span></div>
+            </div>`;
+    }
+
+    function renderDivergence(d) {
+        const card = document.getElementById('divergence-card');
+        if (!d || !d.executor || d.executor.entries === 0) { card.style.display = 'none'; return; }
+        card.style.display = '';
+        const ex = d.executor, sh = d.shadow, dv = d.divergence;
+        const slip = ex.median_probe_slip !== null ? (100 * ex.median_probe_slip).toFixed(1) + '%' : '-';
+        const slipMean = ex.mean_probe_slip !== null ? (100 * ex.mean_probe_slip).toFixed(1) + '%' : '-';
+        const failRate = ex.probe_fail_rate !== null ? (100 * ex.probe_fail_rate).toFixed(0) + '%' : '-';
+        const tiles = [
+            { label: 'shadow mean (model fills)', value: sh.n ? fmtPct(sh.mean_ret) : '-', color: 'text-green-400' },
+            { label: 'executor mean (quote fills)', value: ex.stats.n ? fmtPct(ex.stats.n ? ex.stats.mean_ret : 0) : '-', color: 'text-amber-400' },
+            { label: 'mean gap (sim - realistic)', value: dv ? dv.mean_gap_pp.toFixed(1) + 'pp' : '-', color: dv && dv.mean_gap_pp > 0 ? 'text-red-400' : 'text-green-400' },
+            { label: 'probe slip vs trigger (median / mean)', value: `${slip} / ${slipMean}`, color: 'text-slate-200' },
+            { label: 'probe fail rate', value: failRate, color: ex.probe_fail_rate > 0.2 ? 'text-red-400' : 'text-slate-200' },
+            { label: 'executor n (closed / entries)', value: `${ex.stats.n} / ${ex.entries}`, color: 'text-slate-200' },
+        ];
+        document.getElementById('divergence-body').innerHTML = tiles.map((t) => `
+            <div class="card !p-3">
+                <div class="text-xs text-slate-500 uppercase">${t.label}</div>
+                <div class="text-xl font-bold mono ${t.color}">${t.value}</div>
+            </div>`).join('');
+    }
+
+    // ---------- polling ----------
+    async function poll() {
+        try {
+            const stats = await fetchEtag('/api/stats');
+            if (stats) renderStats(stats);
+            if (state.currentTab === 'overview') {
+                const live = await fetchEtag('/api/shadow/live');
+                if (live) renderLive(live);
+                const lv = await fetchEtag('/api/executor/live');
+                if (lv) renderLivePositions(lv);
+                const div = await fetchEtag('/api/executor/stats');
+                if (div) renderDivergence(div);
+                const bsel = document.getElementById('perf-batch-select');
+                if (!bsel.options.length) {
+                    const batches = await fetchEtag('/api/batches');
+                    if (batches) populateBatchSelects(batches.batches.map((b) => b.batch), batches.active_batch);
+                }
+                const perf = await fetchEtag('/api/batches/perf?batch=' + state.perfBatch);
+                if (perf) renderPerfChart(perf);
+            } else if (state.currentTab === 'trades') {
+                const bsel = document.getElementById('trades-filter-batch');
+                if (!bsel.options.length) {
+                    const batches = await fetchEtag('/api/batches');
+                    if (batches) populateBatchSelects(batches.batches.map((b) => b.batch), batches.active_batch);
+                }
+                const params = new URLSearchParams({ limit: '300' });
+                if (state.filterTrades.batch) params.set('batch', state.filterTrades.batch);
+                if (state.filterTrades.reason) params.set('reason', state.filterTrades.reason);
+                if (state.filterTrades.outcome) params.set('outcome', state.filterTrades.outcome);
+                const trades = await fetchEtag('/api/shadow/trades?' + params);
+                if (trades) renderTrades(trades);
+            } else if (state.currentTab === 'research') {
+                const r = await fetchEtag('/api/research');
+                if (r) renderResearch(r);
+            } else if (state.currentTab === 'batches') {
+                const b = await fetchEtag('/api/batches');
+                if (b) renderBatches(b);
+            } else if (state.currentTab === 'pipeline') {
+                const p = await fetchEtag('/api/pipeline');
+                if (p) renderPipeline(p);
+            } else if (state.currentTab === 'curve') {
+                const c = await fetchEtag('/api/curve');
+                if (c) renderCurve(c);
+            }
+        } catch (e) { /* transient fetch errors are non-fatal */ }
+    }
+
+    document.getElementById('perf-batch-select').addEventListener('change', (e) => {
+        state.perfBatch = Number(e.target.value);
+        state.etags['/api/batches/perf?batch=' + state.perfBatch] = null;
+        poll();
+    });
+    for (const [btnId, mode] of [['perf-x-trades', 'trades'], ['perf-x-time', 'time']]) {
+        document.getElementById(btnId).addEventListener('click', () => {
+            if (state.perfXMode === mode) return;
+            state.perfXMode = mode;
+            document.getElementById('perf-x-trades').classList.toggle('active', mode === 'trades');
+            document.getElementById('perf-x-time').classList.toggle('active', mode === 'time');
+            if (perfDataCache) renderPerfChart(perfDataCache);
+        });
+    }
+    document.getElementById('trades-filter-batch').addEventListener('change', (e) => { state.filterTrades.batch = e.target.value; state.etags = {}; poll(); });
+    document.getElementById('trades-filter-reason').addEventListener('change', (e) => { state.filterTrades.reason = e.target.value; state.etags = {}; poll(); });
+    document.getElementById('trades-filter-outcome').addEventListener('change', (e) => { state.filterTrades.outcome = e.target.value; state.etags = {}; poll(); });
+
+    showTab('overview');
+    renderWallet();
+    setInterval(renderWallet, 30000);
+    setInterval(poll, 5000);
+    </script>
+</body>
+</html>

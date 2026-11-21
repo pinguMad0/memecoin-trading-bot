@@ -1,0 +1,18 @@
+{
+  "gate_min_liq": 15000,
+  "gate_max_bb_ratio": 3.0,
+  "gate_max_sell_pressure": 0.3,
+  "mom_threshold": 0.15,
+  "mom_lookback_s": 300,
+  "entry_slip_model": 0.03,
+  "stop_loss": -0.30,
+  "trail": 0.25,
+  "timeout_s": 900,
+  "watch_cap": 20,
+  "watch_evict_s": 2700,
+  "poll_s": 90,
+  "entry_fill_mode": "model",
+  "probe_stake_sol": 0.01,
+  "guard_max_quote_divergence": 0.20,
+  "max_ref_price": 0
+}
